@@ -133,8 +133,7 @@ class EventList(object):
 
 
     def to_lc_list(self, dt):
-        """
-        Convert event list to a generator of :class:`stingray.Lightcurve`s.
+        """Convert event list to a generator of Lightcurves.
 
         Parameters
         ----------
