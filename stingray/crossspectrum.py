@@ -180,7 +180,6 @@ class Crossspectrum(object):
         self.lc1 = lc1
         self.lc2 = lc2
         self.power_type = power_type
-
         self._make_crossspectrum(lc1, lc2)
 
         # These are needed to calculate coherence
@@ -727,6 +726,12 @@ class AveragedCrossspectrum(Crossspectrum):
         self.power_type = power_type
         self.dt = dt
 
+        for lc in [lc1, lc2]:
+            if isinstance(lc, EventList):
+                lengths = lc.gti[:, 1] - lc.gti[:, 0]
+                good = lengths >= segment_size
+                lc.gti = lc.gti[good]
+
         Crossspectrum.__init__(self, lc1, lc2, norm, gti=gti,
                                power_type=power_type, dt=dt)
 
@@ -742,7 +747,8 @@ class AveragedCrossspectrum(Crossspectrum):
             Two light curves used for computing the cross spectrum.
         """
         # A way to say that this is actually not a power spectrum
-        if lc1 is not lc2:
+        if lc1 is not lc2 and (isinstance(lc1, EventList) or
+                               isinstance(lc1, Lightcurve)):
             self.pds1 = AveragedCrossspectrum(lc1, lc1,
                                               segment_size=self.segment_size,
                                               norm='none',
