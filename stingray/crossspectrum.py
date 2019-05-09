@@ -10,6 +10,7 @@ from stingray.lightcurve import Lightcurve
 from stingray.utils import rebin_data, simon, rebin_data_log
 from stingray.exceptions import StingrayError
 from stingray.gti import cross_two_gtis, bin_intervals_from_gtis, check_gtis
+from .events import EventList
 import copy
 
 __all__ = ["Crossspectrum", "AveragedCrossspectrum", "coherence", "time_lag"]
@@ -144,7 +145,7 @@ class Crossspectrum(object):
         The total number of photons in light curve 2
     """
     def __init__(self, lc1=None, lc2=None, norm='none', gti=None,
-                 power_type="real"):
+                 power_type="real", dt=None):
         if isinstance(norm, str) is False:
             raise TypeError("norm must be a string")
 
@@ -155,6 +156,7 @@ class Crossspectrum(object):
 
         # check if input data is a Lightcurve object, if not make one or
         # make an empty Crossspectrum object if lc1 == ``None`` or lc2 == ``None``
+
         if lc1 is None or lc2 is None:
             if lc1 is not None or lc2 is not None:
                 raise TypeError("You can't do a cross spectrum with just one "
@@ -169,6 +171,11 @@ class Crossspectrum(object):
                 self.m = 1
                 self.n = None
                 return
+
+        # gti = cross_two_gtis(lc1.gti, lc2.gti)
+        # lc1.gti = gti
+        # lc2.gti = gti
+
         self.gti = gti
         self.lc1 = lc1
         self.lc2 = lc2
@@ -429,6 +436,7 @@ class Crossspectrum(object):
         log_nphots2 = np.log(self.nphots2)
 
         actual_nphots = np.float64(np.sqrt(np.exp(log_nphots1 + log_nphots2)))
+
         actual_mean = np.sqrt(self.meancounts1 * self.meancounts2)
 
         assert actual_mean > 0.0, \
@@ -662,6 +670,8 @@ class AveragedCrossspectrum(Crossspectrum):
         ``[[gti0_0, gti0_1], [gti1_0, gti1_1], ...]`` -- Good Time intervals.
         This choice overrides the GTIs in the single light curves. Use with
         care!
+    dt : float
+        Only needed if feeding :class:`EventList` objects
 
     power_type: string, optional, default ``real`` Parameter to choose among
     complete, real part and magnitude of the cross spectrum.
@@ -704,7 +714,7 @@ class AveragedCrossspectrum(Crossspectrum):
     """
 
     def __init__(self, lc1=None, lc2=None, segment_size=None,
-                 norm='none', gti=None, power_type="real"):
+                 norm='none', gti=None, power_type="real", dt=None):
 
         self.type = "crossspectrum"
 
@@ -715,9 +725,10 @@ class AveragedCrossspectrum(Crossspectrum):
 
         self.segment_size = segment_size
         self.power_type = power_type
+        self.dt = dt
 
         Crossspectrum.__init__(self, lc1, lc2, norm, gti=gti,
-                               power_type=power_type)
+                               power_type=power_type, dt=dt)
 
         return
 
@@ -731,13 +742,17 @@ class AveragedCrossspectrum(Crossspectrum):
             Two light curves used for computing the cross spectrum.
         """
         # A way to say that this is actually not a power spectrum
-        if lc1 is not lc2 and isinstance(lc1, Lightcurve):
+        if lc1 is not lc2:
             self.pds1 = AveragedCrossspectrum(lc1, lc1,
                                               segment_size=self.segment_size,
-                                              norm='none', gti=lc1.gti, power_type=self.power_type)
+                                              norm='none',
+                                              power_type=self.power_type,
+                                              dt=self.dt)
             self.pds2 = AveragedCrossspectrum(lc2, lc2,
                                               segment_size=self.segment_size,
-                                              norm='none', gti=lc2.gti, power_type=self.power_type)
+                                              norm='none',
+                                              power_type=self.power_type,
+                                              dt=self.dt)
 
     def _make_segment_spectrum(self, lc1, lc2, segment_size):
         """
@@ -778,29 +793,32 @@ class AveragedCrossspectrum(Crossspectrum):
 
         # In case a small difference exists, ignore it
         lc1.dt = lc2.dt
-        if self.gti is None:
-            self.gti = cross_two_gtis(lc1.gti, lc2.gti)
-            lc1.gti = lc2.gti = self.gti
-            lc1._apply_gtis()
-            lc2._apply_gtis()
 
-        check_gtis(self.gti)
+        current_gtis = cross_two_gtis(lc1.gti, lc2.gti)
+        if self.gti is not None:
+            current_gtis = cross_two_gtis(current_gtis, self.gti)
+
+        lc1.gti = lc2.gti = current_gtis
+        lc1._apply_gtis()
+        lc2._apply_gtis()
+
+        check_gtis(current_gtis)
 
         cs_all = []
         nphots1_all = []
         nphots2_all = []
 
         start_inds, end_inds = \
-            bin_intervals_from_gtis(self.gti, segment_size, lc1.time,
+            bin_intervals_from_gtis(current_gtis, segment_size, lc1.time,
                                     dt=lc1.dt)
 
         for start_ind, end_ind in zip(start_inds, end_inds):
-            time_1 = lc1.time[start_ind:end_ind]
-            counts_1 = lc1.counts[start_ind:end_ind]
-            counts_1_err = lc1.counts_err[start_ind:end_ind]
-            time_2 = lc2.time[start_ind:end_ind]
-            counts_2 = lc2.counts[start_ind:end_ind]
-            counts_2_err = lc2.counts_err[start_ind:end_ind]
+            time_1 = copy.deepcopy(lc1.time[start_ind:end_ind])
+            counts_1 = copy.deepcopy(lc1.counts[start_ind:end_ind])
+            counts_1_err = copy.deepcopy(lc1.counts_err[start_ind:end_ind])
+            time_2 = copy.deepcopy(lc2.time[start_ind:end_ind])
+            counts_2 = copy.deepcopy(lc2.counts[start_ind:end_ind])
+            counts_2_err = copy.deepcopy(lc2.counts_err[start_ind:end_ind])
             gti1 = np.array([[time_1[0] - lc1.dt / 2,
                               time_1[-1] + lc1.dt / 2]])
             gti2 = np.array([[time_2[0] - lc2.dt / 2,
@@ -813,7 +831,8 @@ class AveragedCrossspectrum(Crossspectrum):
                                  err_dist=lc2.err_dist,
                                  gti=gti2,
                                  dt=lc2.dt)
-            cs_seg = Crossspectrum(lc1_seg, lc2_seg, norm=self.norm, power_type=self.power_type)
+            cs_seg = Crossspectrum(lc1_seg, lc2_seg, norm=self.norm,
+                                   power_type=self.power_type)
             cs_all.append(cs_seg)
             nphots1_all.append(np.sum(lc1_seg.counts))
             nphots2_all.append(np.sum(lc2_seg.counts))
@@ -833,6 +852,11 @@ class AveragedCrossspectrum(Crossspectrum):
             Two light curves used for computing the cross spectrum.
         """
 
+        if isinstance(lc1, EventList):
+            lc1 = lc1.to_lc_list(self.dt)
+        if isinstance(lc2, EventList):
+            lc2 = lc2.to_lc_list(self.dt)
+
         # chop light curves into segments
         if isinstance(lc1, Lightcurve) and \
                 isinstance(lc2, Lightcurve):
@@ -850,9 +874,7 @@ class AveragedCrossspectrum(Crossspectrum):
 
         else:
             self.cs_all, nphots1_all, nphots2_all = [], [], []
-
             for lc1_seg, lc2_seg in zip(lc1, lc2):
-
                 if self.type == "crossspectrum":
                     cs_sep, nphots1_sep, nphots2_sep = \
                         self._make_segment_spectrum(lc1_seg, lc2_seg,
@@ -864,7 +886,6 @@ class AveragedCrossspectrum(Crossspectrum):
 
                 else:
                     raise ValueError("Type of spectrum not recognized!")
-
                 self.cs_all.append(cs_sep)
                 nphots1_all.append(nphots1_sep)
 
