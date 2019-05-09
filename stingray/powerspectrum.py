@@ -12,6 +12,7 @@ from stingray.gti import bin_intervals_from_gtis, check_gtis
 from stingray.utils import simon
 from stingray.crossspectrum import Crossspectrum, AveragedCrossspectrum
 from .gti import cross_two_gtis
+from .events import EventList
 
 __all__ = ["Powerspectrum", "AveragedPowerspectrum", "DynamicalPowerspectrum"]
 
@@ -450,6 +451,11 @@ class AveragedPowerspectrum(AveragedCrossspectrum, Powerspectrum):
             raise ValueError("segment_size must be specified")
         if segment_size is not None and not np.isfinite(segment_size):
             raise ValueError("segment_size must be finite!")
+
+        if isinstance(lc, EventList):
+            lengths = lc.gti[:, 1] - lc.gti[:, 0]
+            good = lengths >= segment_size
+            lc.gti = lc.gti[good]
 
         self.segment_size = segment_size
 
