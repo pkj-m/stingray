@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 from stingray import Lightcurve, AveragedPowerspectrum
 from stingray import Crossspectrum, AveragedCrossspectrum, coherence, time_lag
 from stingray import StingrayError
+from ..simulator.simulator import Simulator
+
 import copy
 
 np.random.seed(20160528)
@@ -21,23 +23,23 @@ class TestCoherenceFunction(object):
         coh = coherence(self.lc1, self.lc2)
 
     def test_coherence_fails_if_data1_not_lc(self):
-        data = np.array([[1,2,3,4,5],[2,3,4,5,1]])
+        data = np.array([[1, 2, 3, 4, 5], [2, 3, 4, 5, 1]])
 
         with pytest.raises(TypeError):
             coh = coherence(self.lc1, data)
 
     def test_coherence_fails_if_data2_not_lc(self):
-        data = np.array([[1,2,3,4,5],[2,3,4,5,1]])
+        data = np.array([[1, 2, 3, 4, 5], [2, 3, 4, 5, 1]])
 
         with pytest.raises(TypeError):
             coh = coherence(data, self.lc2)
 
     def test_coherence_computes_correctly(self):
-
         coh = coherence(self.lc1, self.lc2)
 
         assert len(coh) == 2
         assert np.abs(np.mean(coh)) < 1
+
 
 class TestTimelagFunction(object):
 
@@ -49,23 +51,23 @@ class TestTimelagFunction(object):
         lag = time_lag(self.lc1, self.lc2)
 
     def test_time_lag_fails_if_data1_not_lc(self):
-        data = np.array([[1,2,3,4,5],[2,3,4,5,1]])
+        data = np.array([[1, 2, 3, 4, 5], [2, 3, 4, 5, 1]])
 
         with pytest.raises(TypeError):
             lag = time_lag(self.lc1, data)
 
     def test_time_lag_fails_if_data2_not_lc(self):
-        data = np.array([[1,2,3,4,5],[2,3,4,5,1]])
+        data = np.array([[1, 2, 3, 4, 5], [2, 3, 4, 5, 1]])
 
         with pytest.raises(TypeError):
             lag = time_lag(data, self.lc2)
 
     def test_time_lag_computes_correctly(self):
-
         lag = time_lag(self.lc1, self.lc2)
 
         assert np.max(lag) <= np.pi
         assert np.min(lag) >= -np.pi
+
 
 class TestCoherence(object):
 
@@ -98,14 +100,13 @@ class TestCrossspectrum(object):
         tend = 1.0
         dt = 0.0001
 
-        time = np.arange(tstart + 0.5*dt, tend + 0.5*dt, dt)
+        time = np.arange(tstart + 0.5 * dt, tend + 0.5 * dt, dt)
 
         counts1 = np.random.poisson(0.01, size=time.shape[0])
         counts2 = np.random.negative_binomial(1, 0.09, size=time.shape[0])
-
         self.lc1 = Lightcurve(time, counts1, gti=[[tstart, tend]], dt=dt)
         self.lc2 = Lightcurve(time, counts2, gti=[[tstart, tend]], dt=dt)
-
+        self.rate1 = 100.  # mean count rate (counts/sec) of light curve 1
         self.cs = Crossspectrum(self.lc1, self.lc2)
 
     def test_make_empty_crossspectrum(self):
@@ -147,7 +148,7 @@ class TestCrossspectrum(object):
             cs = Crossspectrum(self.lc1, lc_)
 
     def test_make_crossspectrum_diff_lc_counts_shape(self):
-        counts = np.array([1]*10001)
+        counts = np.array([1] * 10001)
         time = np.linspace(0.0, 1.0001, 10001)
         lc_ = Lightcurve(time, counts)
         with pytest.raises(StingrayError):
@@ -174,7 +175,7 @@ class TestCrossspectrum(object):
                        for r in record])
 
     def test_make_crossspectrum_diff_dt(self):
-        counts = np.array([1]*10000)
+        counts = np.array([1] * 10000)
         time = np.linspace(0.0, 2.0, 10000)
         lc_ = Lightcurve(time, counts)
         with pytest.raises(StingrayError):
@@ -201,20 +202,32 @@ class TestCrossspectrum(object):
         assert type(new_cs) == type(self.cs)
         new_cs.time_lag()
 
-    def test_norm_leahy(self):
-        cs = Crossspectrum(self.lc1, self.lc2, norm='leahy')
-        assert len(cs.power) == 4999
-        assert cs.norm == 'leahy'
-
-    def test_norm_frac(self):
-        cs = Crossspectrum(self.lc1, self.lc2, norm='frac')
-        assert len(cs.power) == 4999
-        assert cs.norm == 'frac'
-
     def test_norm_abs(self):
-        cs = Crossspectrum(self.lc1, self.lc2, norm='abs')
+        # Testing for a power spectrum of lc1
+        cs = Crossspectrum(lc1=self.lc1, lc2=self.lc1, norm='abs')
         assert len(cs.power) == 4999
         assert cs.norm == 'abs'
+        abs_noise = 2. * self.rate1  # expected Poisson noise level
+        print(np.mean(cs.power), abs_noise)
+        assert np.isclose(np.mean(cs.power[1:]), abs_noise, atol=30)
+
+    def test_norm_leahy(self):
+        # Testing for a power spectrum of lc1
+        cs = Crossspectrum(lc1=self.lc1, lc2=self.lc1, norm='leahy')
+        assert len(cs.power) == 4999
+        assert cs.norm == 'leahy'
+        leahy_noise = 2.0  # expected Poisson noise level
+        print(np.mean(cs.power), leahy_noise)
+        assert np.isclose(np.mean(cs.power[1:]), leahy_noise, atol=0.2)
+
+    def test_norm_frac(self):
+        # Testing for a power spectrum of lc1
+        cs = Crossspectrum(lc1=self.lc1, lc2=self.lc1, norm='frac')
+        assert len(cs.power) == 4999
+        assert cs.norm == 'frac'
+        frac_noise = 2. / self.rate1  # expected Poisson noise level
+        print(np.mean(cs.power), frac_noise)
+        assert np.isclose(np.mean(cs.power[1:]), frac_noise, atol=0.005)
 
     def test_failure_when_normalization_not_recognized(self):
         with pytest.raises(ValueError):
@@ -246,6 +259,12 @@ class TestCrossspectrum(object):
         self.cs.plot()
         assert plt.fignum_exists('crossspectrum')
 
+    def test_rebin_error(self):
+        cs = Crossspectrum()
+        with pytest.raises(ValueError):
+            cs.rebin()
+
+
 class TestAveragedCrossspectrum(object):
 
     def setup_class(self):
@@ -253,7 +272,7 @@ class TestAveragedCrossspectrum(object):
         tend = 1.0
         dt = np.longdouble(0.0001)
 
-        time = np.arange(tstart + 0.5*dt, tend + 0.5*dt, dt)
+        time = np.arange(tstart + 0.5 * dt, tend + 0.5 * dt, dt)
 
         counts1 = np.random.poisson(0.01, size=time.shape[0])
         counts2 = np.random.negative_binomial(1, 0.09, size=time.shape[0])
@@ -316,19 +335,21 @@ class TestAveragedCrossspectrum(object):
 
     def test_different_tseg(self):
         time2 = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-        counts2_test = np.random.poisson(0.01, size=len(time2))
+        counts2_test = np.random.poisson(1000, size=len(time2))
         test_lc2 = Lightcurve(time2, counts2_test)
 
         time1 = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-        counts1_test = np.random.negative_binomial(1, 0.09, size=len(time1))
+        counts1_test = np.random.poisson(1000, size=len(time1))
         test_lc1 = Lightcurve(time1, counts1_test)
 
         assert test_lc2.dt == test_lc1.dt
 
         assert test_lc2.tseg != test_lc1.tseg
 
-        with pytest.raises(ValueError):
-            assert AveragedCrossspectrum(test_lc1, test_lc2, segment_size=1)
+        with pytest.warns(UserWarning) as record:
+            AveragedCrossspectrum(test_lc1, test_lc2, segment_size=5)
+            assert np.any(["same tseg" in r.message.args[0]
+                           for r in record])
 
     def test_rebin_with_invalid_type_attribute(self):
         new_df = 2
@@ -364,7 +385,7 @@ class TestAveragedCrossspectrum(object):
             t0 = int(len(lc) / n)
             t = t0
             i = 0
-            while(True):
+            while (True):
                 lc_seg = lc[i:t]
                 yield lc_seg
                 if t + t0 > len(lc):
@@ -390,6 +411,23 @@ class TestAveragedCrossspectrum(object):
             self.cs = AveragedCrossspectrum(self.lc1, self.lc2,
                                             segment_size=1,
                                             norm="wrong")
+
+    def test_failure_when_power_type_not_recognized(self):
+        with pytest.raises(ValueError):
+            self.cs = AveragedCrossspectrum(self.lc1, self.lc2,
+                                            segment_size=1,
+                                            power_type="wrong")
+
+    def test_normalize_crossspectrum(self):
+        cs1 = Crossspectrum(self.lc1, self.lc2, norm="leahy")
+        cs2 = Crossspectrum(self.lc1, self.lc2, norm="leahy",
+                            power_type="all")
+        cs3 = Crossspectrum(self.lc1, self.lc2, norm="leahy",
+                            power_type="real")
+        cs4 = Crossspectrum(self.lc1, self.lc2, norm="leahy",
+                            power_type="absolute")
+        assert np.all(cs1.power.real == cs3.power)
+        assert np.all(np.isclose(np.abs(cs2.power), cs4.power, atol=0.0001))
 
     def test_rebin(self):
         new_cs = self.cs.rebin(df=1.5)
@@ -420,7 +458,7 @@ class TestAveragedCrossspectrum(object):
     def test_timelag(self):
         from ..simulator.simulator import Simulator
         dt = 0.1
-        simulator = Simulator(dt, 10000, rms=0.8, mean=1000)
+        simulator = Simulator(dt, 10000, rms=0.2, mean=1000)
         test_lc1 = simulator.simulate(2)
         test_lc2 = Lightcurve(test_lc1.time,
                               np.array(np.roll(test_lc1.counts, 2)),
@@ -442,4 +480,4 @@ class TestAveragedCrossspectrum(object):
         cs = AveragedCrossspectrum(test_lc1, test_lc2, segment_size=10,
                                    norm="leahy")
 
-        assert np.allclose(cs.power_err, np.sqrt(2/cs.m))
+        assert np.allclose(cs.power_err, np.sqrt(2 / cs.m))

@@ -102,7 +102,7 @@ class TestPowerspectrum(object):
 
     def test_frac_normalization_correct(self):
         """
-        In rms normalization, the integral of the powers should be
+        In fractional rms normalization, the integral of the powers should be
         equal to the variance of the light curve divided by the mean
         of the light curve squared.
         """
@@ -162,7 +162,11 @@ class TestPowerspectrum(object):
         rms_lc = np.std(lc.counts) / np.mean(lc.counts)
         assert np.isclose(rms_ps, rms_lc, atol=0.01)
 
-    def test_leahy_norm_correct(self):
+    def test_leahy_norm_Poisson_noise(self):
+        """
+        In Leahy normalization, the poisson noise level (so, in the absence of
+        a signal, the average power) should be equal to 2.
+        """
         time = np.linspace(0, 10.0, 1e5)
         counts = np.random.poisson(1000, size=time.shape[0])
 
@@ -201,6 +205,23 @@ class TestPowerspectrum(object):
             ps = Powerspectrum(lc=self.lc, norm="rms")
             rms_ps, rms_err = ps.compute_rms(min_freq=ps.freq[0],
                                              max_freq=ps.freq[-1])
+
+    def test_abs_norm_Poisson_noise(self):
+        """
+        Poisson noise level for a light curve with absolute rms-squared
+        normalization should be approximately 2 * the mean count rate of the
+        light curve.
+        """
+        time = np.linspace(0, 1., 1e4)
+        counts = np.random.poisson(0.01, size=time.shape[0])
+
+        lc = Lightcurve(time, counts)
+        ps = Powerspectrum(lc, norm="abs")
+        print(lc.counts/lc.tseg)
+        abs_noise = 2. * 100  # expected Poisson noise level;
+                              # hardcoded value from above
+        print(np.mean(ps.power[1:]), abs_noise)
+        assert np.isclose(np.mean(ps.power[1:]), abs_noise, atol=30)
 
     def test_fractional_rms_error(self):
         """
@@ -659,8 +680,8 @@ class TestDynamicalPowerspectrum(object):
     def test_rebin_time_default_method(self):
         segment_size = 3
         dt_new = 4.0
-        rebin_time = np.array([1.5, 5.5, 9.5, 13.5])
-        rebin_dps = np.array([[0.7962963, 1.16402116, 0.28571429, 0.65625]])
+        rebin_time = np.array([ 2.,  6., 10.])
+        rebin_dps = np.array([[0.7962963 , 1.16402116, 0.28571429]])
         dps = DynamicalPowerspectrum(self.lc_test, segment_size=segment_size)
         dps.rebin_time(dt_new=dt_new)
         assert np.allclose(dps.time, rebin_time)
@@ -686,8 +707,8 @@ class TestDynamicalPowerspectrum(object):
     def test_rebin_time_mean_method(self):
         segment_size = 3
         dt_new = 4.0
-        rebin_time = np.array([1.5, 5.5, 9.5, 13.5])
-        rebin_dps = np.array([[0.59722222, 0.87301587, 0.21428571, 0.4921875]])
+        rebin_time = np.array([ 2.,  6., 10.])
+        rebin_dps = np.array([[0.59722222, 0.87301587, 0.21428571]])
         dps = DynamicalPowerspectrum(self.lc_test, segment_size=segment_size)
         dps.rebin_time(dt_new=dt_new, method='mean')
         assert np.allclose(dps.time, rebin_time)
@@ -713,8 +734,8 @@ class TestDynamicalPowerspectrum(object):
     def test_rebin_time_average_method(self):
         segment_size = 3
         dt_new = 4.0
-        rebin_time = np.array([1.5, 5.5, 9.5, 13.5])
-        rebin_dps = np.array([[0.59722222, 0.87301587, 0.21428571, 0.4921875]])
+        rebin_time = np.array([ 2.,  6., 10.])
+        rebin_dps = np.array([[0.59722222, 0.87301587, 0.21428571]])
         dps = DynamicalPowerspectrum(self.lc_test, segment_size=segment_size)
         dps.rebin_time(dt_new=dt_new, method='average')
         assert np.allclose(dps.time, rebin_time)

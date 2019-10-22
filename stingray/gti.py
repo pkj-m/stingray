@@ -100,6 +100,9 @@ def check_gtis(gti):
         If GTIs have overlapping or displaced values
     """
     gti = np.asarray(gti)
+    if len(gti) < 1:
+        raise ValueError("Empty GTIs")
+
     if len(gti) != gti.shape[0] or len(gti.shape) != 2 or \
             len(gti) != gti.shape[0]:
         raise TypeError("Please check formatting of GTIs. They need to be"
@@ -158,7 +161,6 @@ def create_gti_mask_jit(time, gtis, mask, gti_mask, min_length=0):  # pragma: no
             if length < min_length:
                 next_gti = True
                 continue
-
             next_gti = False
             gti_mask[gti_el] = True
 
@@ -229,9 +231,15 @@ def create_gti_mask(time, gtis, safe_interval=0, min_length=0,
                                         dt=dt, epsilon=epsilon)
 
     gtis = np.array(gtis, dtype=np.longdouble)
+
     check_gtis(gtis)
 
     dt = assign_value_if_none(dt, np.median(np.diff(time)))
+
+    lengths = gtis[:, 1] - gtis[:, 0]
+    good = lengths >= max(min_length, dt)
+
+    gtis = gtis[good]
 
     mask = np.zeros(len(time), dtype=bool)
 
@@ -455,8 +463,8 @@ def cross_two_gtis(gti0, gti1):
     final_gti = []
     for ie, e in enumerate(conc_end):
         # Is this ending in series 0 or 1?
-        this_series = conc_tag[ie]
-        other_series = not this_series
+        this_series = int(conc_tag[ie])
+        other_series = int(this_series == 0)
 
         # Check that this closes intervals in both series.
         # 1. Check that there is an opening in both series 0 and 1 lower than e
@@ -594,7 +602,8 @@ def gti_len(gti):
         The sum of lengths of all GTIs
 
     """
-    return np.sum([g[1] - g[0] for g in gti])
+    gti = np.array(gti)
+    return np.sum(gti[:, 1] - gti[:, 0])
 
 
 def check_separate(gti0, gti1):
@@ -639,20 +648,21 @@ def join_equal_gti_boundaries(gti):
     """If the start of a GTI is right at the end of another, join them.
 
     """
-    new_gtis = gti
+    new_gtis=[]
+    for l in gti:
+        new_gtis.append(l)
     touching = gti[:-1, 1] == gti[1:, 0]
-    if np.any(touching):
-        ng = []
-        count = 0
-        while count < len(gti) - 1:
-            if new_gtis[count, 1] == gti[count + 1, 0]:
-                ng.append([gti[count, 0], gti[count + 1, 1]])
-            else:
-                ng.append(gti[count])
-            count += 1
-        new_gtis = np.asarray(ng)
-    return new_gtis
-
+    ng = []
+    count = 0
+    while count < len(gti)-1:
+        if touching[count]:
+            new_gtis[count+1] = [new_gtis[count][0], new_gtis[count+1][1]]
+        else:
+            ng.append(new_gtis[count])
+        count += 1
+    ng.append(new_gtis[-1])
+    return np.asarray(ng)
+  
 
 def append_gtis(gti0, gti1):
     """Union of two non-overlapping GTIs.

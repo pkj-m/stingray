@@ -84,7 +84,6 @@ class TestChunks(object):
 
 
 class TestLightcurve(object):
-
     @classmethod
     def setup_class(cls):
         cls.times = np.array([1, 2, 3, 4])
@@ -111,7 +110,7 @@ class TestLightcurve(object):
 
         with warnings.catch_warnings(record=True) as w:
             lc = Lightcurve(times, counts, err_dist="poisson")
-            assert str(w[0].message) == warn_str
+            assert np.any([str(wi.message) == warn_str for wi in w])
 
     def test_unrecognize_err_dist_warning(self):
         """
@@ -125,7 +124,7 @@ class TestLightcurve(object):
 
         with warnings.catch_warnings(record=True) as w:
             lc = Lightcurve(times, counts, err_dist='gauss')
-            assert str(w[0].message) == warn_str
+            assert np.any([str(wi.message) == warn_str for wi in w])
 
     def test_dummy_err_dist_fail(self):
         """
@@ -325,7 +324,8 @@ class TestLightcurve(object):
                          err_dist="gauss")
         with warnings.catch_warnings(record=True) as w:
             lc = lc1 + lc2
-            assert "ightcurves have different statistics" in str(w[0].message)
+            assert np.any(["ightcurves have different statistics"
+                           in str(wi.message) for wi in w])
 
     def test_add_with_same_gtis(self):
         lc1 = Lightcurve(self.times, self.counts, gti=self.gti)
@@ -383,7 +383,8 @@ class TestLightcurve(object):
                          err_dist="gauss")
         with warnings.catch_warnings(record=True) as w:
             lc = lc1 - lc2
-            assert "ightcurves have different statistics" in str(w[0].message)
+            assert np.any(["ightcurves have different statistics"
+                           in str(wi.message) for wi in w])
 
     def test_sub_with_different_mjdref(self):
         lc1 = Lightcurve(self.times, self.counts, gti=self.gti, mjdref=57000)
@@ -463,7 +464,8 @@ class TestLightcurve(object):
 
         with warnings.catch_warnings(record=True) as w:
             lc1.join(lc2)
-            assert "different bin widths" in str(w[0].message)
+            assert np.any(["different bin widths"
+                           in str(wi.message) for wi in w])
 
     def test_join_with_different_mjdref(self):
         lc1 = Lightcurve(self.times, self.counts, gti=self.gti, mjdref=57000)
@@ -493,7 +495,8 @@ class TestLightcurve(object):
 
         with warnings.catch_warnings(record=True) as w:
             lc = lc1.join(lc2)
-            assert "overlapping time ranges" in str(w[0].message)
+            assert np.any(["overlapping time ranges" in str(wi.message)
+                           for wi in w])
 
         assert len(lc.counts) == len(lc.time) == 6
         assert np.all(lc.counts == np.array([2, 2, 3, 3, 4, 4]))
@@ -562,6 +565,69 @@ class TestLightcurve(object):
         assert np.all(lc2.counts == np.array([2, 2]))
         np.testing.assert_almost_equal(lc2.gti[-1][-1], 2.5)
         assert lc2.mjdref == lc.mjdref
+
+    def test_split_with_two_segments(self):
+        test_time = np.array([1, 2, 3, 6, 7, 8])
+        test_counts = np.random.rand(len(test_time))
+        lc_test = Lightcurve(test_time, test_counts)
+        slc = lc_test.split(1.5)
+
+        assert len(slc) == 2
+
+    def test_split_has_correct_data_points(self):
+        test_time = np.array([1, 2, 3, 6, 7, 8])
+        test_counts = np.random.rand(len(test_time))
+        lc_test = Lightcurve(test_time, test_counts)
+        slc = lc_test.split(1.5)
+
+        assert np.all((slc[0].time == [1, 2, 3]))
+        assert np.all((slc[1].time == [6, 7 ,8]))
+        assert np.all((slc[0].counts == test_counts[:3]))
+        assert np.all((slc[1].counts == test_counts[3:]))
+
+    def test_split_with_three_segments(self):
+        test_time = np.array([1, 2, 3, 6, 7, 8, 10, 11, 12])
+        test_counts = np.random.rand(len(test_time))
+        lc_test = Lightcurve(test_time, test_counts)
+        slc = lc_test.split(1.5)
+
+        assert len(slc) == 3
+
+    def test_threeway_split_has_correct_data_points(self):
+        test_time = np.array([1, 2, 3, 6, 7, 8, 10, 11, 12])
+        test_counts = np.random.rand(len(test_time))
+        lc_test = Lightcurve(test_time, test_counts)
+        slc = lc_test.split(1.5)
+
+        assert np.all((slc[0].time == [1, 2, 3]))
+        assert np.all((slc[1].time == [6, 7 ,8]))
+        assert np.all((slc[2].time == [10, 11 ,12]))
+        assert np.all((slc[0].counts == test_counts[:3]))
+        assert np.all((slc[1].counts == test_counts[3:6]))
+        assert np.all((slc[2].counts == test_counts[6:]))
+
+    def test_split_with_gtis(self):
+        test_time = np.array([1, 2, 3, 6, 7, 8, 10, 11, 12])
+        test_counts = np.random.rand(len(test_time))
+        gti = [[0,4], [9, 13]]
+        lc_test = Lightcurve(test_time, test_counts, gti=gti)
+        slc = lc_test.split(1.5)
+
+        assert np.all((slc[0].time == [1, 2, 3]))
+        assert np.all((slc[1].time == [10, 11 ,12]))
+        assert np.all((slc[0].counts == test_counts[:3]))
+        assert np.all((slc[1].counts == test_counts[6:]))
+
+    def test_consecutive_gaps(self):
+        test_time = np.array([1, 2, 3, 6, 9, 10, 11])
+        test_counts = np.random.rand(len(test_time))
+        lc_test = Lightcurve(test_time, test_counts)
+        slc = lc_test.split(1.5)
+
+        assert np.all((slc[0].time == [1, 2, 3]))
+        assert np.all((slc[1].time == [9, 10, 11]))
+        assert np.all((slc[0].counts == test_counts[:3]))
+        assert np.all((slc[1].counts == test_counts[4:]))
 
     def test_sort(self):
         _times = [2, 1, 3, 4]
@@ -634,13 +700,15 @@ class TestLightcurve(object):
         with pytest.raises(TypeError):
             with warnings.catch_warnings(record=True) as w:
                 lc.plot(labels=123)
-                assert "must be either a list or tuple" in str(w[0].message)
+                assert np.any(["must be either a list or tuple"
+                               in str(wi.message) for wi in w])
 
     def test_plot_labels_index_error(self):
         lc = Lightcurve(self.times, self.counts)
         with warnings.catch_warnings(record=True) as w:
             lc.plot(labels=('x'))
-            assert "must have two labels" in str(w[0].message)
+
+            assert np.any(["must have two labels" in str(wi.message) for wi in w])
 
     def test_plot_default_filename(self):
         lc = Lightcurve(self.times, self.counts)
@@ -712,6 +780,21 @@ class TestLightcurve(object):
         assert np.all(lc1.counts == [3, 3])
         assert np.all(lc0.gti == [[0.5, 4.5]])
         assert np.all(lc1.gti == [[5.5, 7.5]])
+
+    def test_split_lc_by_gtis_minpoints(self):
+        times = [1, 2, 3, 4, 5, 6, 7, 8]
+        counts = [1, 1, 1, 1, 2, 3, 3, 2]
+        gti = [[0.5, 3.5], [3.5, 5.5], [5.5, 8.5]]
+        min_points = 3
+
+        lc = Lightcurve(times, counts, gti=gti)
+        list_of_lcs = lc.split_by_gti(min_points=min_points)
+        lc0 = list_of_lcs[0]
+        lc1 = list_of_lcs[1]
+        assert np.all(lc0.time == [1, 2, 3])
+        assert np.all(lc1.time == [6, 7, 8])
+        assert np.all(lc0.counts == [1, 1, 1])
+        assert np.all(lc1.counts == [3, 3, 2])
 
     def test_shift(self):
         times = [1, 2, 3, 4, 5, 6, 7, 8]

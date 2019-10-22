@@ -33,14 +33,15 @@ class Simulator(object):
     """
 
     def __init__(self, dt=1, N=1024, mean=0, rms=1, red_noise=1,
-                 random_state=None):
+                 random_state=None, tstart=0.0):
 
         self.dt = dt
         self.N = N
         self.mean = mean
         self.rms = rms
         self.red_noise = red_noise
-        self.time = dt*np.arange(N)
+        self.tstart = tstart
+        self.time = dt*np.arange(N) + self.tstart
 
         # Initialize a tuple of energy ranges with corresponding light curves
         self.channels = []
@@ -66,6 +67,9 @@ class Simulator(object):
 
         * x = simulate(s):
            For generating a light curve from user-provided spectrum.
+            **Note**: In this case, the `red_noise` parameter is provided.
+            You can generate a longer light curve by providing a higher 
+            frequency resolution on the input power spectrum.
 
               Parameters:
                 * s : array-like
@@ -297,7 +301,7 @@ class Simulator(object):
         h_primary = np.append(np.zeros(int(t1/dt)), p1)
 
         # Create a rising exponential of user-provided slope
-        x = np.linspace(t1/dt, t2/dt, (t2-t1)/dt)
+        x = np.linspace(t1/dt, t2/dt, int((t2-t1)/dt))
         h_rise = np.exp(rise*x)
 
         # Evaluate a factor for scaling exponential
@@ -305,7 +309,7 @@ class Simulator(object):
         h_secondary = (h_rise/factor) + p1
 
         # Create a decaying exponential until the end time
-        x = np.linspace(t2/dt, t3/dt, (t3-t2)/dt)
+        x = np.linspace(t2/dt, t3/dt, int((t3-t2)/dt))
         h_decay = (np.exp((-decay)*(x-4/dt)))
 
         # Add the three responses
@@ -369,7 +373,10 @@ class Simulator(object):
         a1 = self.random_state.normal(size=len(s))
         a2 = self.random_state.normal(size=len(s))
 
-        lc = self._find_inverse(a1*s, a2*s)
+        real = a1 * np.sqrt(s)
+        imaginary = a2 * np.sqrt(s)
+
+        lc = self._find_inverse(real, imaginary)
         lc = Lightcurve(self.time, self._extract_and_scale(lc),
                         err_dist='gauss', dt=self.dt)
 
@@ -400,7 +407,7 @@ class Simulator(object):
         # Compute PSD from model
         simpsd = model(simfreq)
 
-        fac = np.sqrt(simpsd/2.)
+        fac = np.sqrt(simpsd)
         pos_real   = self.random_state.normal(size=nbins//2)*fac
         pos_imag   = self.random_state.normal(size=nbins//2)*fac
 
@@ -442,7 +449,7 @@ class Simulator(object):
             else:
                 raise ValueError('Params should be list or dictionary!')
 
-            fac = np.sqrt(simpsd/2.)
+            fac = np.sqrt(simpsd)
             pos_real   = self.random_state.normal(size=nbins//2)*fac
             pos_imag   = self.random_state.normal(size=nbins//2)*fac
 
@@ -483,10 +490,11 @@ class Simulator(object):
 
         if mode == 'same':
             lc = lc[:-(len(h) - 1)]
+
         elif mode == 'filtered':
             lc = lc[(len(h) - 1):-(len(h) - 1)]
 
-        time = self.dt * np.arange(len(lc))
+        time = self.dt * np.arange(len(lc)) + self.tstart
         return Lightcurve(time, lc, err_dist='gauss', dt=self.dt)
 
     def _find_inverse(self, real, imaginary):

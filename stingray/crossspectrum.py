@@ -102,8 +102,8 @@ class Crossspectrum(object):
     norm: {``frac``, ``abs``, ``leahy``, ``none``}, default ``none``
         The normalization of the (real part of the) cross spectrum.
 
-    amplitude: bool, optional, default ``False``
-        Parameter to choose between real component and amplitude of the cross spectrum.
+    power_type: string, optional, default ``real`` Parameter to choose among
+    complete, real part and magnitude of the cross spectrum.
 
     Other Parameters
     ----------------
@@ -143,8 +143,8 @@ class Crossspectrum(object):
     nphots2: float
         The total number of photons in light curve 2
     """
-    def __init__(self, lc1=None, lc2=None, norm='none', gti=None, amplitude=False):
-
+    def __init__(self, lc1=None, lc2=None, norm='none', gti=None,
+                 power_type="real"):
         if isinstance(norm, str) is False:
             raise TypeError("norm must be a string")
 
@@ -172,7 +172,7 @@ class Crossspectrum(object):
         self.gti = gti
         self.lc1 = lc1
         self.lc2 = lc2
-        self.amplitude = amplitude
+        self.power_type = power_type
 
         self._make_crossspectrum(lc1, lc2)
 
@@ -181,7 +181,8 @@ class Crossspectrum(object):
 
     def _make_auxil_pds(self, lc1, lc2):
         """
-        Helper method to create the power spectrum of both light curves independently.
+        Helper method to create the power spectrum of both light curves
+        independently.
 
         Parameters
         ----------
@@ -194,10 +195,12 @@ class Crossspectrum(object):
 
     def _make_crossspectrum(self, lc1, lc2):
         """
-        Auxiliary method computing the normalized cross spectrum from two light curves.
-        This includes checking for the presence of and applying Good Time Intervals, computing the
-        unnormalized Fourier cross-amplitude, and then renormalizing using the required normalization.
-        Also computes an uncertainty estimate on the cross spectral powers.
+        Auxiliary method computing the normalized cross spectrum from two
+        light curves. This includes checking for the presence of and
+        applying Good Time Intervals, computing the unnormalized Fourier
+        cross-amplitude, and then renormalizing using the required
+        normalization. Also computes an uncertainty estimate on the cross
+        spectral powers.
 
         Parameters
         ----------
@@ -317,7 +320,7 @@ class Crossspectrum(object):
         fourier_2 = scipy.fftpack.fft(lc2.counts)  # do Fourier transform 2
 
         freqs = scipy.fftpack.fftfreq(lc1.n, lc1.dt)
-        cross = fourier_1[freqs > 0] * np.conj(fourier_2[freqs > 0])
+        cross = np.multiply(fourier_1[freqs > 0], np.conj(fourier_2[freqs > 0]))
 
         return freqs[freqs > 0], cross
 
@@ -392,7 +395,8 @@ class Crossspectrum(object):
             if self.type == 'powerspectrum':
                 pass
             else:
-                raise AttributeError('Spectrum has no attribute named nphots2.')
+                raise AttributeError(
+                    'Spectrum has no attribute named nphots2.')
 
         bin_cs.m = np.rint(step_size * self.m)
 
@@ -411,9 +415,6 @@ class Crossspectrum(object):
         tseg: int
             The length of the Fourier segment, in seconds.
 
-        amp: bool, optional, default ``False``
-            Parameter to choose between real component and amplitude of the cross spectrum
-
         Returns
         -------
         power: numpy.nd.array
@@ -422,7 +423,7 @@ class Crossspectrum(object):
         """
 
         # The "effective" counts/bin is the geometrical mean of the counts/bin
-        # of the two light curves
+        # of the two light curves. Same goes for counts/second in meanrate.
 
         log_nphots1 = np.log(self.nphots1)
         log_nphots2 = np.log(self.nphots2)
@@ -430,32 +431,32 @@ class Crossspectrum(object):
         actual_nphots = np.float64(np.sqrt(np.exp(log_nphots1 + log_nphots2)))
         actual_mean = np.sqrt(self.meancounts1 * self.meancounts2)
 
+        meanrate = np.sqrt((self.nphots1 * self.nphots2) / tseg)
+
         assert actual_mean > 0.0, \
             "Mean count rate is <= 0. Something went wrong."
 
-        if self.amplitude:
-            c_num = np.abs(unnorm_power)
-        else:
+        if self.power_type == "all":
+            c_num = unnorm_power
+        elif self.power_type == "real":
             c_num = unnorm_power.real
+        elif self.power_type == "absolute":
+            c_num = np.absolute(unnorm_power)
+        else:
+            raise ValueError("`power_type` not recognized!")
 
         if self.norm.lower() == 'leahy':
-            c = c_num
-            power = c * 2. / actual_nphots
+            power = c_num * 2. / actual_nphots
 
         elif self.norm.lower() == 'frac':
             c = c_num / np.float(self.n ** 2.)
             power = c * 2. * tseg / (actual_mean ** 2.0)
 
         elif self.norm.lower() == 'abs':
-            c = c_num / np.float(self.n ** 2.)
-            power = c * (2. * tseg)
+            power = c_num * 2. * meanrate / actual_nphots
 
         elif self.norm.lower() == 'none':
             power = unnorm_power
-
-        else:
-            raise Exception("Normalization not recognized!")
-
         return power
 
     def rebin_log(self, f=0.01):
@@ -593,9 +594,12 @@ class Crossspectrum(object):
             raise ImportError("Matplotlib required for plot()")
 
         fig = plt.figure('crossspectrum')
-        fig = plt.plot(self.freq, np.abs(self.power), marker, color='b', label='Amplitude')
-        fig = plt.plot(self.freq, np.abs(self.power.real), marker, color='r', alpha=0.5, label='Real Part')
-        fig = plt.plot(self.freq, np.abs(self.power.imag), marker, color='g', alpha=0.5, label='Imaginary Part')
+        fig = plt.plot(self.freq, np.abs(self.power), marker, color='b',
+                       label='Amplitude')
+        fig = plt.plot(self.freq, np.abs(self.power.real), marker, color='r',
+                       alpha=0.5, label='Real Part')
+        fig = plt.plot(self.freq, np.abs(self.power.imag), marker, color='g',
+                       alpha=0.5, label='Imaginary Part')
 
         if labels is not None:
             try:
@@ -659,6 +663,9 @@ class AveragedCrossspectrum(Crossspectrum):
         This choice overrides the GTIs in the single light curves. Use with
         care!
 
+    power_type: string, optional, default ``real`` Parameter to choose among
+    complete, real part and magnitude of the cross spectrum.
+
     Attributes
     ----------
     freq: numpy.ndarray
@@ -695,8 +702,9 @@ class AveragedCrossspectrum(Crossspectrum):
         two light curves
 
     """
+
     def __init__(self, lc1=None, lc2=None, segment_size=None,
-                 norm='none', gti=None):
+                 norm='none', gti=None, power_type="real"):
 
         self.type = "crossspectrum"
 
@@ -706,8 +714,10 @@ class AveragedCrossspectrum(Crossspectrum):
             raise ValueError("segment_size must be finite!")
 
         self.segment_size = segment_size
+        self.power_type = power_type
 
-        Crossspectrum.__init__(self, lc1, lc2, norm, gti=gti)
+        Crossspectrum.__init__(self, lc1, lc2, norm, gti=gti,
+                               power_type=power_type)
 
         return
 
@@ -724,10 +734,10 @@ class AveragedCrossspectrum(Crossspectrum):
         if lc1 is not lc2 and isinstance(lc1, Lightcurve):
             self.pds1 = AveragedCrossspectrum(lc1, lc1,
                                               segment_size=self.segment_size,
-                                              norm='none', gti=lc1.gti)
+                                              norm='none', gti=lc1.gti, power_type=self.power_type)
             self.pds2 = AveragedCrossspectrum(lc2, lc2,
                                               segment_size=self.segment_size,
-                                              norm='none', gti=lc2.gti)
+                                              norm='none', gti=lc2.gti, power_type=self.power_type)
 
     def _make_segment_spectrum(self, lc1, lc2, segment_size):
         """
@@ -757,7 +767,9 @@ class AveragedCrossspectrum(Crossspectrum):
         assert isinstance(lc2, Lightcurve)
 
         if lc1.tseg != lc2.tseg:
-            raise ValueError("Lightcurves do not have same tseg.")
+            simon("Lightcurves do not have same tseg. This means that the data"
+                  "from the two channels are not completely in sync. This "
+                  "might or might not be an issue. Keep an eye on it.")
 
         # If dt differs slightly, its propagated error must not be more than
         # 1/100th of the bin
@@ -766,7 +778,6 @@ class AveragedCrossspectrum(Crossspectrum):
 
         # In case a small difference exists, ignore it
         lc1.dt = lc2.dt
-
         if self.gti is None:
             self.gti = cross_two_gtis(lc1.gti, lc2.gti)
             lc1.gti = lc2.gti = self.gti
@@ -791,9 +802,9 @@ class AveragedCrossspectrum(Crossspectrum):
             counts_2 = lc2.counts[start_ind:end_ind]
             counts_2_err = lc2.counts_err[start_ind:end_ind]
             gti1 = np.array([[time_1[0] - lc1.dt / 2,
-                             time_1[-1] + lc1.dt / 2]])
+                              time_1[-1] + lc1.dt / 2]])
             gti2 = np.array([[time_2[0] - lc2.dt / 2,
-                             time_2[-1] + lc2.dt / 2]])
+                              time_2[-1] + lc2.dt / 2]])
             lc1_seg = Lightcurve(time_1, counts_1, err=counts_1_err,
                                  err_dist=lc1.err_dist,
                                  gti=gti1,
@@ -802,7 +813,7 @@ class AveragedCrossspectrum(Crossspectrum):
                                  err_dist=lc2.err_dist,
                                  gti=gti2,
                                  dt=lc2.dt)
-            cs_seg = Crossspectrum(lc1_seg, lc2_seg, norm=self.norm)
+            cs_seg = Crossspectrum(lc1_seg, lc2_seg, norm=self.norm, power_type=self.power_type)
             cs_all.append(cs_seg)
             nphots1_all.append(np.sum(lc1_seg.counts))
             nphots2_all.append(np.sum(lc2_seg.counts))
