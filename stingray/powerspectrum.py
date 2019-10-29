@@ -495,12 +495,16 @@ class AveragedPowerspectrum(AveragedCrossspectrum, Powerspectrum):
             time = lc.time[start_ind:end_ind]
             counts = lc.counts[start_ind:end_ind]
             counts_err = lc.counts_err[start_ind: end_ind]
-            lc_seg = lightcurve.Lightcurve(time, counts, err=counts_err,
-                                           err_dist=lc.err_dist.lower(),
-                                           skip_checks=True)
-            power_seg = Powerspectrum(lc_seg, norm=self.norm)
-            power_all.append(power_seg)
-            nphots_all.append(np.sum(lc_seg.counts))
+
+            if np.sum(counts) == 0:
+                continue
+            else:
+                lc_seg = lightcurve.Lightcurve(time, counts, err=counts_err,
+                                               err_dist=lc.err_dist.lower(),
+                                               skip_checks=True)
+                power_seg = Powerspectrum(lc_seg, norm=self.norm)
+                power_all.append(power_seg)
+                nphots_all.append(np.sum(lc_seg.counts))
 
         return power_all, nphots_all
 
