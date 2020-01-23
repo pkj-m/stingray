@@ -61,7 +61,7 @@ def p_single_trial_from_p_multitrial(pn, n):
     approximation, when ``pn`` is low: ``p1 = pn / n``.
 
     However, if ``pn`` is close to 1, this approximation gives
-    incorrect results.
+   incorrect results.
 
     Here we calculate this probability by inverting the Binomial
     problem. Given that (see ``p_multitrial_from_single_trial``)
@@ -91,6 +91,18 @@ def p_single_trial_from_p_multitrial(pn, n):
         The significance at which we reject the null hypothesis on
         each single trial.
 
+    Parameters
+    ----------
+    pn : float or array of float (same size as p1)
+        The probability of at least one success in ``n`` trials, each with
+        probability ``p1``
+    n : int
+        The number of trials
+
+    Returns
+    -------
+    p1 : float or array of floats, same size as ``pn``
+        the probability of success in each trial.
     """
     if isinstance(n, Iterable):
         return np.array([p_single_trial_from_p_multitrial(pn, ni)
